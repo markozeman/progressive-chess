@@ -1,43 +1,9 @@
 import heapq
 import random
 import chess
-import urllib.request as url_req
 import csv
 import time
-
-
-def test_html():
-    board = chess.Board()
-
-    fen1 = 'rnbBkbnr/pp1p1ppp/8/8/3p4/8/PPP1PPPP/RN1QKBNR b 4'
-    corr_fen = correct_fen(fen1)
-    print(corr_fen)
-
-    board.set_fen(corr_fen)
-
-    print(whose_turn(board))
-    board.push(chess.Move.null())  # null move
-    print(whose_turn(board))
-
-    print(board.is_check())
-    print(board.is_checkmate())
-    print(board.is_game_over())
-
-    print(board)
-    save_image(board, 'test.png')
-
-    print(board.is_attacked_by(chess.BLACK, chess.D8))
-
-    attackers = board.attackers(chess.WHITE, chess.D3)
-    print(attackers)
-    print(list(attackers))
-    print(chess.D1 in attackers)
-
-    print(board.attacks(chess.D8))
-
-    print(board.piece_at(chess.D8))
-
-    print(board.pieces(chess.BISHOP, chess.WHITE))
+from operator import itemgetter
 
 
 def read_examples():
@@ -46,14 +12,11 @@ def read_examples():
         return list(map(lambda x: x[1], list(reader)[1:]))
 
 
-def save_image(fen, png_filename='example'):
+def save_image(fen):
     fen = fen.split(' ')[0]
     base_url = 'https://backscattering.de/web-boardimage/board.png?fen='
     url = base_url + fen
     return url
-    # png_image = url_req.urlopen(url).read()
-    # with open('boards/' + png_filename + '.png', 'wb') as f:
-    #     f.write(png_image)
 
 
 def path_in_right_form(path):
@@ -107,12 +70,6 @@ def find_checkmate_square(row, column):
     return squares
 
 
-def position_on_board(square_str):
-    d = {'a': 0, 'b': 1, 'c': 2, 'd': 3, 'e': 4, 'f': 5, 'g': 6, 'h': 7}
-    a, n = square_str
-    num = (int(n)-1) * 8
-    num += d[a]
-    return num
 
 
 def f(g, hevristics):
@@ -122,11 +79,58 @@ def f(g, hevristics):
 class Seminar1:
     def __init__(self):
         self.visited = {}
+        self.char2num = {'a': 0, 'b': 1, 'c': 2, 'd': 3, 'e': 4, 'f': 5, 'g': 6, 'h': 7}
         self.opposite_king = None
         self.new_position = None
         self.king_directions = None
         self.mat_square = None
         self.curr_figure = None
+        self.chessboard = None
+
+    def updated_position(self, pos, move, turn):
+        pos_ = pos.split('/')
+        pos = ''.join(map(lambda c: int(c) * '.' if c.isdigit() else c, pos))
+        pos_split = pos.split('/')
+
+        move = str(move)
+        old_row = abs(int(move[1]) - 8)
+        old_col = self.char2num[move[0]]
+        new_row = abs(int(move[3]) - 8)
+        new_col = self.char2num[move[2]]
+
+        if len(move) == 5:  # promotion
+            if turn == 'b':
+                pos_split[new_row] = pos_split[new_row][:new_col] + move[4] + pos_split[new_row][new_col + 1:]
+            else:
+                pos_split[new_row] = pos_split[new_row][:new_col] + move[4].upper() + pos_split[new_row][new_col + 1:]
+        else:
+            pos_split[new_row] = pos_split[new_row][:new_col] + pos_split[old_row][old_col] + pos_split[new_row][new_col+1:]
+
+        pos_split[old_row] = pos_split[old_row][:old_col] + '.' + pos_split[old_row][old_col+1:]
+
+        pos_2_rows = itemgetter(old_row, new_row)(pos_split)
+
+        new_pos = []
+        for row in pos_2_rows:
+            s = ''
+            count = 0
+            j = 0
+            for i in range(len(row)):
+                if i >= j:
+                    if row[i] == '.':
+                        while i+count < len(row) and row[i+count] == '.':
+                            count += 1
+                        s += str(count)
+                        j = i + count
+                    else:
+                        count = 0
+                        s += row[i]
+            new_pos.append(s)
+
+        pos_[old_row] = new_pos[0]
+        pos_[new_row] = new_pos[1]
+
+        return '/'.join(pos_)
 
     def save_king_directions(self):
         king_num = self.opposite_king[2]
@@ -139,21 +143,27 @@ class Seminar1:
         b.set_fen(correct_fen(fen_only_queen))
         self.king_directions = list(b.attacks(king_num))
 
+    def position_on_board(self, square_str):
+        a, n = square_str
+        num = (int(n) - 1) * 8
+        num += self.char2num[a]
+        return num
+
     def h_mat_square(self, board, factor=1.0):
         squares_attackers = list(map(lambda s: len(list(board.attackers(not self.opposite_king[3], s))), self.mat_square))
         return factor * sum(squares_attackers)
 
     def h_different_figures(self, board, factor=1.0):
         self.curr_figure = str(board.piece_at(self.new_position)).lower()
-        d = {'p': 2, 'n': 4, 'b': 5, 'r': 2, 'q': 7, 'k': 1}
+        d = {'p': 3, 'n': 4, 'b': 5, 'r': 2, 'q': 6, 'k': 1}
         return factor * d[self.curr_figure]
 
     def h_distance2king(self, factor=1.0):
         return -factor * chess.square_distance(self.opposite_king[2], self.new_position)
 
     def h_opposite_king_directions(self, factor=1.0):
-        is_b_or_q = self.curr_figure == 'r' or self.curr_figure == 'q'
-        if self.new_position in self.king_directions and is_b_or_q:
+        is_rqb = self.curr_figure == 'r' or self.curr_figure == 'q' or self.curr_figure == 'b'
+        if self.new_position in self.king_directions and is_rqb:
             return factor * 1
         return 0
 
@@ -161,9 +171,8 @@ class Seminar1:
         pass
 
     def save_new_position(self, move):
-        move = str(move)
-        new_pos = move[-2:] if len(move) == 4 else move[2:4]
-        self.new_position = position_on_board(new_pos)
+        new_pos = str(move)[2:4]
+        self.new_position = self.position_on_board(new_pos)
 
     def a_star(self, board, curr_moves, fen, max_time):
         start = time.time()
@@ -171,56 +180,49 @@ class Seminar1:
         num_moves = int(num_moves)
 
         queue = []
-        heapq.heappush(queue, (0, {'pos': position, 'f': 0, 'g': curr_moves, 'path': ''}))
+        heapq.heappush(queue, (0, {'pos': position, 'g': curr_moves, 'path': ''}))
 
         while queue and time.time() - start < max_time:
             node = heapq.heappop(queue)[1]
             curr_moves = node['g']
+            self.visited[node['pos']] = curr_moves
             board.set_fen(position2fen(node['pos'], turn))
-            self.visited[node['pos']] = 0       ###  curr_moves !!!!!
 
-            null_move(board)  # to check for check and checkmate
-            if board.is_check() and curr_moves < num_moves:     # se sme zakomentirat?
-                continue
-
+            null_move(board)  # to check for checkmate
             if board.is_checkmate():
                 return node
-
             board.pop()  # reverse null move
+
+            # check if new g exceeds number of available moves
+            g = curr_moves + 1
+            if g > num_moves:
+                continue
 
             for move in list(board.legal_moves):
                 board.push(move)
 
-                # check if new g exceeds number of available moves
-                g = curr_moves + 1      # out of the loop!!!
-                if g > int(num_moves):
-                    board.pop()
-                    continue
-
                 # if it is check and not the last move, do not add to queue
-                if board.is_check() and curr_moves != num_moves - 1:
+                if board.is_check() and g != num_moves:
                     board.pop()
                     continue
 
                 # check if it was not already been visited
-                pos = board.board_fen()
-                if pos in self.visited and curr_moves >= self.visited[pos]:  # second condition always true, if 0 put into self.visited
+                pos = self.updated_position(node['pos'], move, turn)
+                if pos in self.visited and g >= self.visited[pos]:
                     board.pop()
                     continue
-
 
                 self.save_new_position(move)
 
                 hevs = [self.h_mat_square(board), self.h_different_figures(board, factor=0.1),
-                        self.h_distance2king(factor=0.5), self.h_opposite_king_directions(factor=2)]
+                        self.h_distance2king(factor=0.1), self.h_opposite_king_directions(factor=2)]
 
                 f_est = f(g, hevs) + random.uniform(0, 0.001)
 
                 new_path = node['path'] + str(move) + ';'
-                heapq.heappush(queue, (f_est, {'pos': pos, 'f': f_est, 'g': g, 'path': new_path}))
+                heapq.heappush(queue, (f_est, {'pos': pos, 'g': g, 'path': new_path}))
 
                 board.pop()
-
 
     def solve(self, fen, max_time=20):
         self.__init__()
@@ -250,11 +252,10 @@ class Seminar1:
 
 
 if __name__ == '__main__':
-    # test_html()
-
     examples = read_examples()
 
-    n = 10
+    n = 60
+    solved = 0
 
     sah = Seminar1()
     start_all = time.time()
@@ -267,10 +268,12 @@ if __name__ == '__main__':
         solution = sah.solve(example)
         end = time.time()
         print(solution)
+        if solution is not None:
+            solved += 1
         print(i, '-- Elapsed time: ', round(end - start, 1), 's\n')
     end_all = time.time()
 
     print('Whole elapsed time: ', round(end_all - start_all, 1), 's\n')
     print('Average time: ', round((end_all - start_all) / n, 1), 's\n')
-
+    print('Solved: ', solved, '/', n)
 
