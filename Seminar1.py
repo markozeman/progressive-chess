@@ -1,22 +1,24 @@
 import heapq
 import random
 import chess
-import csv
-import time
 from operator import itemgetter
+# import time
+# import csv
 
 
+'''
 def read_examples():
     with open('progressive_checkmates.csv', 'r') as f:
         reader = csv.reader(f)
         return list(map(lambda x: x[1], list(reader)[1:]))
 
 
-def save_image(fen):
+def image_url(fen):
     fen = fen.split(' ')[0]
     base_url = 'https://backscattering.de/web-boardimage/board.png?fen='
     url = base_url + fen
     return url
+'''
 
 
 def path_in_right_form(path):
@@ -43,14 +45,9 @@ def null_move(board):
 
 def find_opposite_king(board, turn):
     attacked_wb = chess.BLACK if turn == 'w' else chess.WHITE
-
-    # if not (list(board.pieces(chess.KING, attacked_wb))):
-    #     return -99
-
     opposite_king = list(board.pieces(chess.KING, attacked_wb))[0]
     row_index = chess.square_rank(opposite_king)
     column_index = chess.square_file(opposite_king)
-
     return [row_index, column_index, opposite_king, attacked_wb]
 
 
@@ -70,6 +67,24 @@ def find_checkmate_square(row, column):
     return squares
 
 
+def back2fen(pos_2):
+    new_pos = []
+    for row in pos_2:
+        s = ''
+        count = 0
+        j = 0
+        for i in range(len(row)):
+            if i >= j:
+                if row[i] == '.':
+                    while i + count < len(row) and row[i + count] == '.':
+                        count += 1
+                    s += str(count)
+                    j = i + count
+                else:
+                    count = 0
+                    s += row[i]
+        new_pos.append(s)
+    return new_pos
 
 
 def f(g, hevristics):
@@ -110,25 +125,7 @@ class Seminar1:
 
         pos_2_rows = itemgetter(old_row, new_row)(pos_split)
 
-        new_pos = []
-        for row in pos_2_rows:
-            s = ''
-            count = 0
-            j = 0
-            for i in range(len(row)):
-                if i >= j:
-                    if row[i] == '.':
-                        while i+count < len(row) and row[i+count] == '.':
-                            count += 1
-                        s += str(count)
-                        j = i + count
-                    else:
-                        count = 0
-                        s += row[i]
-            new_pos.append(s)
-
-        pos_[old_row] = new_pos[0]
-        pos_[new_row] = new_pos[1]
+        pos_[old_row], pos_[new_row] = back2fen(pos_2_rows)
 
         return '/'.join(pos_)
 
@@ -167,22 +164,18 @@ class Seminar1:
             return factor * 1
         return 0
 
-    def h_square_color(self, board, move):
-        pass
-
     def save_new_position(self, move):
         new_pos = str(move)[2:4]
         self.new_position = self.position_on_board(new_pos)
 
-    def a_star(self, board, curr_moves, fen, max_time):
-        start = time.time()
+    def a_star(self, board, curr_moves, fen):
         position, turn, _, _, _, num_moves = fen.split(' ')
         num_moves = int(num_moves)
 
         queue = []
         heapq.heappush(queue, (0, {'pos': position, 'g': curr_moves, 'path': ''}))
 
-        while queue and time.time() - start < max_time:
+        while queue:
             node = heapq.heappop(queue)[1]
             curr_moves = node['g']
             self.visited[node['pos']] = curr_moves
@@ -224,7 +217,7 @@ class Seminar1:
 
                 board.pop()
 
-    def solve(self, fen, max_time=20):
+    def solve(self, fen):
         self.__init__()
 
         fen = correct_fen(fen)
@@ -242,7 +235,7 @@ class Seminar1:
         if whose_turn(board)[0] != turn:
             null_move(board)
 
-        final_node = self.a_star(board, curr_moves, fen, max_time)
+        final_node = self.a_star(board, curr_moves, fen)
         if final_node is not None:
             return path_in_right_form(final_node['path'])
 
@@ -250,7 +243,7 @@ class Seminar1:
         return '63140295'
 
 
-
+'''
 if __name__ == '__main__':
     examples = read_examples()
 
@@ -263,7 +256,7 @@ if __name__ == '__main__':
         if i >= n:
             break
 
-        print(example[-3:], save_image(example))
+        # print(example[-3:], image_url(example))
         start = time.time()
         solution = sah.solve(example)
         end = time.time()
@@ -276,4 +269,4 @@ if __name__ == '__main__':
     print('Whole elapsed time: ', round(end_all - start_all, 1), 's\n')
     print('Average time: ', round((end_all - start_all) / n, 1), 's\n')
     print('Solved: ', solved, '/', n)
-
+'''
